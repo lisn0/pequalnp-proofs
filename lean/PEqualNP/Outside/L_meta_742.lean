@@ -514,9 +514,120 @@ theorem optimized_complete (n : ℕ) (ws : List W) (extra : ℕ) (hn : ws.Nodup)
       · exact ⟨(b, a, r), swap,
           go (hp.trans (.swap _ _ _)) (by rw [hs, Finset.insert_comm]) (ops_swap a b ▸ hz)⟩
 
+private def rootTest (p : W × W × List W) : Bool :=
+  !(dispatch 4 (optimized 8) p.1 p.2.1 p.2.2)
+
 set_option maxRecDepth 40000 in
 set_option maxHeartbeats 0 in
-theorem all_front : optimized 9 4 inputs = false := by decide +kernel
+private theorem rootCase0 : rootTest ((pairs inputs).getD 0 (0, 0, [])) = true := by
+  decide +kernel
+
+set_option maxRecDepth 40000 in
+set_option maxHeartbeats 0 in
+private theorem rootCase1 : rootTest ((pairs inputs).getD 1 (0, 0, [])) = true := by
+  decide +kernel
+
+set_option maxRecDepth 40000 in
+set_option maxHeartbeats 0 in
+private theorem rootCase2 : rootTest ((pairs inputs).getD 2 (0, 0, [])) = true := by
+  decide +kernel
+
+set_option maxRecDepth 40000 in
+set_option maxHeartbeats 0 in
+private theorem rootCase3 : rootTest ((pairs inputs).getD 3 (0, 0, [])) = true := by
+  decide +kernel
+
+set_option maxRecDepth 40000 in
+set_option maxHeartbeats 0 in
+private theorem rootCase4 : rootTest ((pairs inputs).getD 4 (0, 0, [])) = true := by
+  decide +kernel
+
+set_option maxRecDepth 40000 in
+set_option maxHeartbeats 0 in
+private theorem rootCase5 : rootTest ((pairs inputs).getD 5 (0, 0, [])) = true := by
+  decide +kernel
+
+set_option maxRecDepth 40000 in
+set_option maxHeartbeats 0 in
+private theorem rootCase6 : rootTest ((pairs inputs).getD 6 (0, 0, [])) = true := by
+  decide +kernel
+
+set_option maxRecDepth 40000 in
+set_option maxHeartbeats 0 in
+private theorem rootCase7 : rootTest ((pairs inputs).getD 7 (0, 0, [])) = true := by
+  decide +kernel
+
+set_option maxRecDepth 40000 in
+set_option maxHeartbeats 0 in
+private theorem rootCase8 : rootTest ((pairs inputs).getD 8 (0, 0, [])) = true := by
+  decide +kernel
+
+set_option maxRecDepth 40000 in
+set_option maxHeartbeats 0 in
+private theorem rootCase9 : rootTest ((pairs inputs).getD 9 (0, 0, [])) = true := by
+  decide +kernel
+
+set_option maxRecDepth 40000 in
+set_option maxHeartbeats 0 in
+private theorem rootCase10 : rootTest ((pairs inputs).getD 10 (0, 0, [])) = true := by
+  decide +kernel
+
+set_option maxRecDepth 40000 in
+set_option maxHeartbeats 0 in
+private theorem rootCase11 : rootTest ((pairs inputs).getD 11 (0, 0, [])) = true := by
+  decide +kernel
+
+set_option maxRecDepth 40000 in
+set_option maxHeartbeats 0 in
+private theorem rootCase12 : rootTest ((pairs inputs).getD 12 (0, 0, [])) = true := by
+  decide +kernel
+
+set_option maxRecDepth 40000 in
+set_option maxHeartbeats 0 in
+private theorem rootCase13 : rootTest ((pairs inputs).getD 13 (0, 0, [])) = true := by
+  decide +kernel
+
+set_option maxRecDepth 40000 in
+set_option maxHeartbeats 0 in
+private theorem rootCase14 : rootTest ((pairs inputs).getD 14 (0, 0, [])) = true := by
+  decide +kernel
+
+private theorem rootCases (i : Fin 15) :
+    rootTest ((pairs inputs).getD i.val (0, 0, [])) = true := by
+  fin_cases i
+  · exact rootCase0
+  · exact rootCase1
+  · exact rootCase2
+  · exact rootCase3
+  · exact rootCase4
+  · exact rootCase5
+  · exact rootCase6
+  · exact rootCase7
+  · exact rootCase8
+  · exact rootCase9
+  · exact rootCase10
+  · exact rootCase11
+  · exact rootCase12
+  · exact rootCase13
+  · exact rootCase14
+
+theorem all_front : optimized 9 4 inputs = false := by
+  have length_pairs : (pairs inputs).length = 15 := by decide
+  have no_start : (pairs inputs).any (fun (a, b, r) => dispatch 4 (optimized 8) a b r) = false := by
+    apply Bool.eq_false_iff.mpr
+    intro h
+    obtain ⟨p, hp, ht⟩ := List.any_eq_true.mp h
+    obtain ⟨j, hj, rfl⟩ := List.mem_iff_getElem.mp hp
+    have hj' : j < 15 := by simpa only [length_pairs] using hj
+    have hcase := rootCases (⟨j, hj'⟩ : Fin 15)
+    rw [List.getD_eq_getElem _ _ hj] at hcase
+    change dispatch 4 (optimized 8) ((pairs inputs)[j]).1
+      ((pairs inputs)[j]).2.1 ((pairs inputs)[j]).2.2 = true at ht
+    unfold rootTest at hcase
+    simp [ht] at hcase
+  change (inputs == [goal] || _) = false
+  rw [no_start]
+  decide
 
 theorem no_small (C : PEqualNP.CircuitLowerBounds.Circuit)
     (hm : PEqualNP.MetaComplexity.Monotone2 C) (hs : C.size ≤ 9)
