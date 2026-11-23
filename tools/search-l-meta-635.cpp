@@ -36,6 +36,65 @@ struct Formula {
 
 bool contains(int mask, int v) { return (mask & (1 << v)) != 0; }
 
+void printFormula(const Formula& cnf) {
+    std::cout << "p cnf " << cnf.variables << ' ' << cnf.clauses.size() << '\n';
+    for (const auto& clause : cnf.clauses) {
+        for (int literal : clause) {
+            std::cout << literal << ' ';
+        }
+        std::cout << "0\n";
+    }
+}
+
+Formula patternFormula(const std::set<int>& maximalSets) {
+    Formula cnf;
+    int bare[gates][2][vertices];
+    for (int i = 0; i < gates; ++i) {
+        for (int v = 0; v < vertices; ++v) {
+            bare[i][0][v] = cnf.fresh();
+            bare[i][1][v] = cnf.fresh();
+            cnf.clauses.push_back({-bare[i][0][v], -bare[i][1][v]});
+        }
+    }
+
+    using Patterns = std::array<std::array<int, 2>, gates>;
+    std::vector<Patterns> previous;
+    for (int mask : maximalSets) {
+        Patterns row;
+        for (int i = 0; i < gates; ++i) {
+            row[i] = {cnf.fresh(), cnf.fresh()};
+            cnf.clauses.push_back({-row[i][0], -row[i][1]});
+        }
+
+        // A marked side is false and the opposite side is true on this input.
+        for (int v = 0; v < vertices; ++v) {
+            std::vector<int> triggers;
+            for (int i = 0; i < gates; ++i) {
+                for (int side = 0; side < 2; ++side) {
+                    if (contains(mask, v)) {
+                        cnf.clauses.push_back({-row[i][side], -bare[i][side][v]});
+                    } else {
+                        triggers.push_back(cnf.both(row[i][side], bare[i][side][v]));
+                    }
+                }
+            }
+            if (!contains(mask, v)) {
+                cnf.clauses.push_back(std::move(triggers));
+            }
+        }
+        for (const Patterns& other : previous) {
+            std::vector<int> opposites;
+            for (int i = 0; i < gates; ++i) {
+                opposites.push_back(cnf.both(row[i][0], other[i][1]));
+                opposites.push_back(cnf.both(row[i][1], other[i][0]));
+            }
+            cnf.clauses.push_back(std::move(opposites));
+        }
+        previous.push_back(row);
+    }
+    return cnf;
+}
+
 int main(int argc, char** argv) {
     constexpr std::pair<int, int> edges[] = {
         {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 0}, {0, 5}, {1, 6}, {2, 7},
@@ -71,6 +130,12 @@ int main(int argc, char** argv) {
             negatives.insert(mask);
             positives.insert(extensions.begin(), extensions.end());
         }
+    }
+
+    if (argc == 2 && std::string_view(argv[1]) == "--patterns") {
+        std::cerr << negatives.size() << " maximal independent sets\n";
+        printFormula(patternFormula(negatives));
+        return 0;
     }
 
     Formula cnf;
@@ -172,11 +237,5 @@ int main(int argc, char** argv) {
     }
 
     std::cerr << negatives.size() << " negative and " << positives.size() << " positive inputs\n";
-    std::cout << "p cnf " << cnf.variables << ' ' << cnf.clauses.size() << '\n';
-    for (const auto& clause : cnf.clauses) {
-        for (int literal : clause) {
-            std::cout << literal << ' ';
-        }
-        std::cout << "0\n";
-    }
+    printFormula(cnf);
 }
