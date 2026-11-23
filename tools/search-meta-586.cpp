@@ -53,6 +53,8 @@ struct Network {
     Formula formula;
     std::vector<std::array<Clause, 2>> operands;
     Clause output;
+    Clause active;
+    std::vector<std::array<Clause, 2>> positiveWitnesses;
 
     explicit Network(int orCount) {
         for (int i = 0; i < orCount; ++i) {
@@ -92,6 +94,31 @@ struct Network {
         }
     }
 
+    void requireIrredundantOrs() {
+        active = formula.variablesFor(static_cast<int>(operands.size()));
+        positiveWitnesses.resize(operands.size());
+        for (size_t i = 0; i < operands.size(); ++i) {
+            // A disabled prefix pads smaller networks with a chain of aliases of input zero.
+            if (i + 1 < operands.size()) {
+                formula.clauses.push_back({-active[i], active[i + 1]});
+            }
+            const size_t alias = i == 0 ? 0 : inputCount + i - 1;
+            for (const auto& side : operands[i]) {
+                for (size_t j = 0; j < side.size(); ++j) {
+                    formula.clauses.push_back({active[i], j == alias ? side[j] : -side[j]});
+                }
+            }
+        }
+    }
+
+    int difference(int a, int b) {
+        const int result = formula.variable();
+        formula.clauses.push_back({-result, a});
+        formula.clauses.push_back({-result, -b});
+        formula.clauses.push_back({result, -a, b});
+        return result;
+    }
+
     int conjunction(const Clause& selected, const Clause& previous, int mask) {
         Clause falseFactors;
         for (int i = 0; i < inputCount; ++i) {
@@ -119,9 +146,14 @@ struct Network {
 
     void constrain(int mask, bool expected) {
         Clause previous;
-        for (const auto& [left, right] : operands) {
+        for (size_t i = 0; i < operands.size(); ++i) {
+            const auto& [left, right] = operands[i];
             const int a = conjunction(left, previous, mask);
             const int b = conjunction(right, previous, mask);
+            if (expected && !active.empty()) {
+                positiveWitnesses[i][0].push_back(difference(a, b));
+                positiveWitnesses[i][1].push_back(difference(b, a));
+            }
             const int out = formula.variable();
             formula.clauses.push_back({-a, out});
             formula.clauses.push_back({-b, out});
@@ -152,6 +184,12 @@ void emit(Network& network) {
     for (int mask = 0; mask < (1 << inputCount); ++mask) {
         if (maximalIndependent(mask)) {
             network.constrain(mask, false);
+        }
+    }
+    for (size_t i = 0; i < network.active.size(); ++i) {
+        for (auto witnesses : network.positiveWitnesses[i]) {
+            witnesses.push_back(-network.active[i]);
+            network.formula.clauses.push_back(std::move(witnesses));
         }
     }
     network.formula.print();
@@ -264,7 +302,7 @@ void decode(const Network& network) {
 
 int main(int argc, char** argv) {
     if (argc != 3) {
-        std::cerr << "Usage: search-meta-586 encode|encode-ordered|decode OR_COUNT\n";
+        std::cerr << "Usage: search-meta-586 encode|encode-ordered|encode-irredundant|decode OR_COUNT\n";
         return 2;
     }
     const std::string mode = argv[1];
@@ -273,6 +311,10 @@ int main(int argc, char** argv) {
         emit(network);
     } else if (mode == "encode-ordered") {
         network.removeSymmetries();
+        emit(network);
+    } else if (mode == "encode-irredundant") {
+        network.removeSymmetries();
+        network.requireIrredundantOrs();
         emit(network);
     } else if (mode == "decode") {
         decode(network);
