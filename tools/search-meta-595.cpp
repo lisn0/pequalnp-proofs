@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <mutex>
+#include <string>
 #include <string_view>
 #include <thread>
 #include <unordered_map>
@@ -116,6 +117,16 @@ struct Problem {
                 }
             }
         }
+        std::array<bool, 128> represented{};
+        for (const auto& [low, high] : probes) {
+            represented[low] = true;
+            represented[high] = true;
+        }
+        for (int x = 0; x < 128; ++x) {
+            if (!represented[x]) {
+                probes.emplace_back(positive[x] ? 0 : x, positive[x] ? x : 3);
+            }
+        }
         std::sort(probes.begin(), probes.end());
         probes.erase(std::unique(probes.begin(), probes.end()), probes.end());
         if (probes.size() > full.size() * 64) {
@@ -135,6 +146,38 @@ struct Problem {
             }
         }
         return result;
+    }
+
+    void printLeanInputs() const {
+        constexpr std::string_view digits = "0123456789abcdef";
+        std::cout << "rows per half: " << probes.size() << '\n';
+        std::cout << "single-bit sites:";
+        for (int i = 0; i < inputCount; ++i) {
+            const auto site = std::find_if(probes.begin(), probes.end(), [i](const auto& pair) {
+                return (pair.first ^ pair.second) == (1 << i);
+            });
+            if (site == probes.end()) {
+                std::abort();
+            }
+            std::cout << ' ' << (site - probes.begin());
+        }
+        std::cout << '\n';
+        for (const auto value : inputs) {
+            std::string hexadecimal((2 * probes.size() + 3) / 4, '0');
+            for (std::size_t i = 0; i < hexadecimal.size(); ++i) {
+                unsigned digit = 0;
+                for (unsigned bit = 0; bit < 4; ++bit) {
+                    const std::size_t row = 4 * i + bit;
+                    if (row < 2 * probes.size()) {
+                        const auto& [low, high] = probes[row % probes.size()];
+                        const int x = row < probes.size() ? low : high;
+                        digit |= static_cast<unsigned>((value >> x) & 1) << bit;
+                    }
+                }
+                hexadecimal[hexadecimal.size() - 1 - i] = digits[digit];
+            }
+            std::cout << "0x" << hexadecimal << '\n';
+        }
     }
 };
 
@@ -243,6 +286,9 @@ struct Search {
         }
         ++visits;
         State state{{}, remaining};
+        if (wires.size() > state.values.size()) {
+            std::abort();
+        }
         for (std::size_t i = 0; i < wires.size(); ++i) {
             state.values[i] = wires[i].value;
         }
@@ -271,6 +317,10 @@ int main(int argc, char** argv) {
         return 2;
     }
     const Problem problem;
+    if (argc > 1 && std::string_view(argv[1]) == "lean-inputs") {
+        problem.printLeanInputs();
+        return 0;
+    }
     std::vector<Wire> inputs;
     std::vector<std::pair<int, int>> roots;
     for (int a = 0; a < inputCount; ++a) {
