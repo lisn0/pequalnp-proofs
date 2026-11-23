@@ -737,7 +737,10 @@ private theorem cut_inv (n a : ℕ) (pre : List Gate) (x : Fin (n + 1) → Bool)
     · simp [he, Stat.Valid, Stat.val, List.getD_eq_getElem?_getD, hlen, hi]
   · change ((cutStats a).getD i (Sum.inl false)).Valid (n + 1 + pre.length) ∧ _
     rw [List.getD_eq_default _ _ (by simpa [cutStats] using Nat.le_of_not_gt hi)]
-    simp [Stat.Valid, Stat.val, List.getD_eq_default, hw, Nat.le_of_not_gt hi]
+    have hout : ((wiresFrom pre (List.ofFn x)).set a false).length ≤ i := by
+      simpa [hw] using Nat.le_of_not_gt hi
+    rw [List.getD_eq_default _ _ hout]
+    exact ⟨trivial, rfl⟩
 
 private theorem cut_set_self (w : List Bool) (a : ℕ) :
     w.set a (w.getD a false) = w := by
@@ -896,9 +899,8 @@ private theorem cutStep (n : ℕ) (C : Circuit) (hmin : IsMinimalCircuit (n + 1)
       | false =>
         have hsm := hmin.2 (⟨pre, a⟩ : Circuit) (fun k hk => (hokPre k hk).1) (by
           funext x
-          rw [horiginal x, hconst x]
-          change (wiresFrom pre (List.ofFn x)).getD a false = (_ || false)
-          simp)
+          change (wiresFrom pre (List.ofFn x)).getD a false = circuitFun (n + 1) C x
+          simpa [hconst x] using (horiginal x).symm)
         change C.gates.length ≤ pre.length at hsm
         omega
       | true =>
@@ -1003,12 +1005,26 @@ private theorem cutStep (n : ℕ) (C : Circuit) (hmin : IsMinimalCircuit (n + 1)
       rw [← hfinal] at hpostSaved
       omega
 
-private structure ChainStep (C : Circuit) (n a : ℕ) (j : Fin C.gates.length) : Prop where
-  read : reads C a j
-  unique : ∀ j', reads C a j' → j' = j
-  op : (C.gates.get j).op = GateOp.or
-  arity : (C.gates.get j).inputs.length = 2
-  side : ∃ w ∈ (C.gates.get j).inputs, w ≠ a ∧ w < n + 1 + j.val
+private def ChainStep (C : Circuit) (n a : ℕ) (j : Fin C.gates.length) : Prop :=
+  reads C a j ∧
+  (∀ j', reads C a j' → j' = j) ∧
+  (C.gates.get j).op = GateOp.or ∧
+  (C.gates.get j).inputs.length = 2 ∧
+  (∃ w ∈ (C.gates.get j).inputs, w ≠ a ∧ w < n + 1 + j.val)
+
+private theorem ChainStep.read {C n a j} (h : ChainStep C n a j) : reads C a j := h.1
+
+private theorem ChainStep.unique {C n a j} (h : ChainStep C n a j) :
+    ∀ j', reads C a j' → j' = j := h.2.1
+
+private theorem ChainStep.op {C n a j} (h : ChainStep C n a j) :
+    (C.gates.get j).op = GateOp.or := h.2.2.1
+
+private theorem ChainStep.arity {C n a j} (h : ChainStep C n a j) :
+    (C.gates.get j).inputs.length = 2 := h.2.2.2.1
+
+private theorem ChainStep.side {C n a j} (h : ChainStep C n a j) :
+    ∃ w ∈ (C.gates.get j).inputs, w ≠ a ∧ w < n + 1 + j.val := h.2.2.2.2
 
 private theorem ChainStep.mem {C : Circuit} {n a : ℕ} {j : Fin C.gates.length}
     (h : ChainStep C n a j) : a ∈ (C.gates.get j).inputs := by
@@ -1022,12 +1038,24 @@ private theorem ChainStep.readSide {C : Circuit} {n a w : ℕ}
     (hm : w ∈ (C.gates.get j).inputs) : reads C w j :=
   Or.inr ⟨by rw [h.op]; simp, hm⟩
 
-private structure ChainSegment (C : Circuit) (n a k : ℕ)
-    (c : Fin (k + 1) → Fin C.gates.length) : Prop where
-  mono : StrictMono c
-  output : C.output = n + 1 + (c (Fin.last k)).val
-  first : ChainStep C n a (c 0)
-  next : ∀ i : Fin k, ChainStep C n (n + 1 + (c i.castSucc).val) (c i.succ)
+private def ChainSegment (C : Circuit) (n a k : ℕ)
+    (c : Fin (k + 1) → Fin C.gates.length) : Prop :=
+  StrictMono c ∧
+  C.output = n + 1 + (c (Fin.last k)).val ∧
+  ChainStep C n a (c 0) ∧
+  (∀ i : Fin k, ChainStep C n (n + 1 + (c i.castSucc).val) (c i.succ))
+
+private theorem ChainSegment.mono {C n a k c} (h : ChainSegment C n a k c) :
+    StrictMono c := h.1
+
+private theorem ChainSegment.output {C n a k c} (h : ChainSegment C n a k c) :
+    C.output = n + 1 + (c (Fin.last k)).val := h.2.1
+
+private theorem ChainSegment.first {C n a k c} (h : ChainSegment C n a k c) :
+    ChainStep C n a (c 0) := h.2.2.1
+
+private theorem ChainSegment.next {C n a k c} (h : ChainSegment C n a k c) :
+    ∀ i : Fin k, ChainStep C n (n + 1 + (c i.castSucc).val) (c i.succ) := h.2.2.2
 
 private theorem buildChainSegment (C : Circuit) (n : ℕ) (P : ℕ → Prop)
     (hvalid : ∀ (a : ℕ) (j : Fin C.gates.length), reads C a j → a < n + 1 + j.val)
@@ -1281,10 +1309,9 @@ private theorem prefix_zero_off (n : ℕ) (C : Circuit) (x : Fin (n + 1) → Boo
   change (List.ofFn x).getD i false = (List.ofFn (forceLast x)).getD i false
   rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD]
   by_cases hib : i < n + 1
-  · have hi' : (⟨i, hib⟩ : Fin (n + 1)) ≠ Fin.last n := by
-      intro e
-      exact hi (congrArg Fin.val e)
-    simp [List.getElem?_ofFn, hib, forceLast, Fin.snoc_eq_ite, hi']
+  · have hin : i < n := by omega
+    have he : (⟨i, hib⟩ : Fin (n + 1)) = (⟨i, hin⟩ : Fin n).castSucc := rfl
+    simp [List.getElem?_ofFn, hib, he, forceLast]
   · simp [List.getElem?_ofFn, hib]
 
 private theorem getD_set_same {α : Type} (xs : List α) (i : ℕ) (v d : α)
@@ -1359,7 +1386,7 @@ private theorem active_advance (n : ℕ) (C : Circuit) (a : ℕ) (j : Fin C.gate
           prefix_length n C p (le_trans hpj j.isLt.le)]
     · intro w hw
       exact hag x w (fun h => hw (Set.mem_insert_of_mem _ h))
-        (fun h => hw (h ▸ Set.mem_insert _ _))
+        (fun h => hw (Set.mem_insert_iff.mpr (Or.inl h)))
     · intro g hg w hw
       obtain ⟨k, hpk, hkj, rfl⟩ := read_in_segment C p (j.val - p) g hg
       have hg' : normGate (C.gates.get k) ∈ (C.gates.map normGate).drop p :=
@@ -1373,7 +1400,10 @@ private theorem active_advance (n : ℕ) (C : Circuit) (a : ℕ) (j : Fin C.gate
       · exact hSread _ hg' _ hw hs
     · exact hi
   refine ⟨by dsimp [b]; omega, by dsimp [b]; omega, insert a S, ?_, ?_, ?_, ?_⟩
-  · simpa [eq_comm, hout] using hSout
+  · intro ho
+    rcases Set.mem_insert_iff.mp ho with e | he
+    · exact hout e.symm
+    · exact hSout he
   · rw [hb]
     intro g hg w hw hbad
     obtain ⟨k, hk, rfl⟩ := read_in_suffix C (j.val + 1) g hg
@@ -1385,7 +1415,8 @@ private theorem active_advance (n : ℕ) (C : Circuit) (a : ℕ) (j : Fin C.gate
     · have hdrop : (C.gates.map normGate).drop (j.val + 1) =
           ((C.gates.map normGate).drop p).drop (j.val + 1 - p) := by
         rw [List.drop_drop, show p + (j.val + 1 - p) = j.val + 1 by omega]
-      exact hSread _ (hdrop ▸ List.mem_of_mem_drop (hdrop ▸ hg)) _ hw hs
+      rw [hdrop] at hg
+      exact hSread _ (List.mem_of_mem_drop hg) _ hw hs
   · rw [hb]
     intro x
     rw [prefix_cons]
