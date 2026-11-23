@@ -722,10 +722,10 @@ theorem dispatch_cases (extra : ℕ) (next : ℕ → List W → Bool) (a b : W) 
   · simp only [if_neg hdup, Bool.or_eq_true, Bool.and_eq_true] at hok
     rcases hok with (h0 | ⟨hmore, h1 | h2⟩) | h3
     · exact ⟨0, by simpa [gateBranch, hdup, Bool.and_eq_true] using h0⟩
-      · refine ⟨1, ?_⟩
-        simpa [gateBranch, hdup] using Bool.and_eq_true.mpr ⟨hmore, Bool.and_eq_true.mpr h1⟩
-      · refine ⟨2, ?_⟩
-        simpa [gateBranch, hdup] using Bool.and_eq_true.mpr ⟨hmore, Bool.and_eq_true.mpr h2⟩
+    · refine ⟨1, ?_⟩
+      simpa [gateBranch, hdup] using Bool.and_eq_true.mpr ⟨hmore, Bool.and_eq_true.mpr h1⟩
+    · refine ⟨2, ?_⟩
+      simpa [gateBranch, hdup] using Bool.and_eq_true.mpr ⟨hmore, Bool.and_eq_true.mpr h2⟩
     · exact ⟨3, by simpa [gateBranch, hdup, Bool.and_eq_true] using h3⟩
 
 def branchCheck (i j : ℕ) (branch : Fin 4) : Bool :=
@@ -746,9 +746,11 @@ theorem search_of_branches
     have hraw : (rawOps a b).length = 4 := by simp [rawOps]
     have hn := checkedBranches (Fin.cast hlen i) (Fin.cast hraw j) branch
     simp only [branchCheck, Fin.val_cast, List.getElem?_eq_getElem i.isLt, Option.any_some] at hn
-    rw [hi] at hn
+    have hi' : (pairs inputs)[i.val]'i.isLt = (a,b,r) := hi
+    rw [hi'] at hn
     simp only [List.getElem?_eq_getElem j.isLt, Option.any_some] at hn
-    rw [hj] at hn
+    have hj' : (rawOps a b)[j.val]'j.isLt = w := hj
+    rw [hj'] at hn
     exact Bool.noConfusion (hn.symm.trans hbranch)
 
 set_option maxRecDepth 8000 in
