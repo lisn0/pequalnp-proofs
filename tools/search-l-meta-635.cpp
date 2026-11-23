@@ -2,6 +2,7 @@
 #include <initializer_list>
 #include <iostream>
 #include <set>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -35,7 +36,7 @@ struct Formula {
 
 bool contains(int mask, int v) { return (mask & (1 << v)) != 0; }
 
-int main() {
+int main(int argc, char** argv) {
     constexpr std::pair<int, int> edges[] = {
         {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 0}, {0, 5}, {1, 6}, {2, 7},
         {3, 8}, {4, 9}, {5, 7}, {6, 8}, {7, 9}, {8, 5}, {9, 6},
@@ -86,6 +87,25 @@ int main() {
             }
         }
         output[i] = cnf.fresh();
+    }
+
+    if (argc == 2 && std::string_view(argv[1]) == "--normalized") {
+        for (int v = 0; v < vertices; ++v) {
+            std::vector<int> occurrences;
+            for (int i = 0; i < gates; ++i) {
+                occurrences.push_back(bare[i][0][v]);
+                occurrences.push_back(bare[i][1][v]);
+                cnf.clauses.push_back({-bare[i][0][v], -bare[i][1][v]});
+            }
+            cnf.clauses.push_back(occurrences);
+            for (int a = 0; a < 2 * gates; ++a) {
+                for (int b = a + 1; b < 2 * gates; ++b) {
+                    for (int c = b + 1; c < 2 * gates; ++c) {
+                        cnf.clauses.push_back({-occurrences[a], -occurrences[b], -occurrences[c]});
+                    }
+                }
+            }
+        }
     }
 
     auto circuit = [&](int mask) {
