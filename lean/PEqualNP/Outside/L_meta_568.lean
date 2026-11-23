@@ -336,29 +336,6 @@ private theorem inv_elim (n : ℕ) (y : List Bool) (hy : y.length = n) (gs : Lis
       rw [ht, Stat.val_append _ _ _ (by rw [lw']; exact (hi i).1)]
       exact (hi i).2
 
-/-- The statuses at the start: the first `n` old wires are the new input wires, and the last
-    input is the constant `b`. -/
-private def initStats (n : ℕ) (b : Bool) : List Stat :=
-  List.ofFn (fun i : Fin n => (Sum.inr (i : ℕ) : Stat)) ++ [Sum.inl b]
-
-private theorem inv_init (n : ℕ) (b : Bool) (y : Fin n → Bool) :
-    Inv n (List.ofFn y) (List.ofFn y ++ [b]) (initStats n b, []) := by
-  refine ⟨by simp [initStats], ?_⟩
-  intro i
-  have l1 : (List.ofFn (fun i : Fin n => (Sum.inr (i : ℕ) : Stat))).length = n := by simp
-  have l2 : (List.ofFn y).length = n := by simp
-  by_cases hin : i = n
-  · subst hin
-    simp only [initStats]
-    rw [getD_snoc_len _ _ _ _ l1, getD_snoc_len _ _ _ _ l2]
-    exact ⟨trivial, rfl⟩
-  · simp only [initStats]
-    rw [getD_snoc_ne _ _ _ _ (by omega), getD_snoc_ne _ _ _ _ (by omega)]
-    by_cases hlt : i < n
-    · simp [hlt, Stat.Valid, Stat.val, wiresFrom]
-    · rw [List.getD_eq_default _ _ (by omega), List.getD_eq_default _ _ (by omega)]
-      exact ⟨trivial, rfl⟩
-
 private theorem ofFn_snoc (n : ℕ) (y : Fin n → Bool) (b : Bool) :
     List.ofFn (Fin.snoc y b : Fin (n + 1) → Bool) = List.ofFn y ++ [b] := by
   rw [List.ofFn_succ']
@@ -371,15 +348,6 @@ private theorem normGate_op (g : Gate) : (normGate g).op = g.op := by
 private theorem normGate_of_ne_not (g : Gate) (h : g.op ≠ GateOp.not) : normGate g = g := by
   obtain ⟨op, ins⟩ := g
   cases op <;> simp_all [normGate]
-
-private theorem normGate_read (g : Gate) (n : ℕ)
-    (h : g.op = GateOp.not ∧ g.inputs.head? = some n ∨
-      g.op ≠ GateOp.not ∧ n ∈ g.inputs) : n ∈ (normGate g).inputs := by
-  rcases h with ⟨hop, hhead⟩ | ⟨hop, hmem⟩
-  · have htake : g.inputs.take 1 = [n] := by
-      rcases h : g.inputs with _ | ⟨a, ins⟩ <;> simp_all
-    simp [normGate, hop, htake]
-  · simpa only [normGate_of_ne_not g hop] using hmem
 
 private theorem elim_stat_length (n : ℕ) (gs : List Gate) (acc : List Stat × List Gate) :
     (elim n gs acc).1.length = acc.1.length + gs.length := by
@@ -729,10 +697,10 @@ private theorem cut_inv (n a : ℕ) (pre : List Gate) (x : Fin (n + 1) → Bool)
   let w := wiresFrom pre (List.ofFn x)
   have hw : w.length = a + 1 := by
     simpa only [w, length_wiresFrom, List.length_ofFn] using hlen
-  refine ⟨?_, ?_⟩
-  · change (cutStats a).length = (w.set a false).length
+  have hs : (cutStats a).length = (w.set a false).length := by
     rw [List.length_set, hw]
     simp [cutStats]
+  refine ⟨hs, ?_⟩
   intro i
   change ((cutStats a).getD i (Sum.inl false)).Valid (n + 1 + pre.length) ∧
     ((cutStats a).getD i (Sum.inl false)).val w = (w.set a false).getD i false
@@ -741,8 +709,9 @@ private theorem cut_inv (n a : ℕ) (pre : List Gate) (x : Fin (n + 1) → Bool)
     by_cases he : i = a
     · subst i
       have ha : a < w.length := by omega
-      simp [Stat.Valid, Stat.val, List.getD_eq_getElem?_getD, ha]
-    · simp [he, Ne.symm he, Stat.Valid, Stat.val, List.getD_eq_getElem?_getD, hlen, hi]
+      simp [Stat.Valid, Stat.val, List.getD_eq_getElem?_getD, List.getElem?_set_self ha]
+    · simp [he, Stat.Valid, Stat.val, List.getD_eq_getElem?_getD,
+        List.getElem?_set_ne (Ne.symm he), hlen, hi]
   · rw [List.getD_eq_default _ _ (by simpa [cutStats] using Nat.le_of_not_gt hi)]
     have hout : (w.set a false).length ≤ i := by
       rw [List.length_set, hw]
@@ -1324,11 +1293,11 @@ private theorem prefix_zero_off (n : ℕ) (C : Circuit) (x : Fin (n + 1) → Boo
   change (List.ofFn x).getD i false = (List.ofFn (forceLast x)).getD i false
   by_cases hib : i < n + 1
   · have hin : i < n := by omega
-    have he : (⟨i, hib⟩ : Fin (n + 1)) = (⟨i, hin⟩ : Fin n).castSucc := rfl
     rw [List.getD_eq_getElem _ _ (by simpa only [List.length_ofFn] using hib),
         List.getD_eq_getElem _ _ (by simpa only [List.length_ofFn] using hib),
-        List.getElem_ofFn, List.getElem_ofFn, he]
-    simp [forceLast]
+        List.getElem_ofFn, List.getElem_ofFn]
+    change x (⟨i, hin⟩ : Fin n).castSucc = forceLast x (⟨i, hin⟩ : Fin n).castSucc
+    simp only [forceLast, Fin.snoc_castSucc]
   · rw [List.getD_eq_default _ _ (by simpa only [List.length_ofFn] using Nat.le_of_not_gt hib),
         List.getD_eq_default _ _ (by simpa only [List.length_ofFn] using Nat.le_of_not_gt hib)]
 
@@ -1354,7 +1323,7 @@ private theorem active_input (n : ℕ) (C : Circuit) : active n C n := by
   · intro x
     rw [Nat.sub_self]
     change (List.ofFn (forceLast x)).getD n false = true
-    rw [ofFn_snoc]
+    rw [forceLast, ofFn_snoc]
     exact getD_snoc_len _ _ _ _ (by simp)
   · intro x i _ hi
     simpa using prefix_zero_off n C x i hi
@@ -1440,7 +1409,7 @@ private theorem active_advance (n : ℕ) (C : Circuit) (a : ℕ) (j : Fin C.gate
     intro x
     rw [prefix_cons]
     have hn : normGate (C.gates.get j) = C.gates.get j :=
-      normGate_of_ne_not _ (by rw [hop]; decide)
+      normGate_of_ne_not _ (by rw [hop]; intro h; cases h)
     rw [hn]
     let v := prefixW n C j.val (forceLast x)
     have hv : v.length = b := prefix_length n C _ j.isLt.le _
