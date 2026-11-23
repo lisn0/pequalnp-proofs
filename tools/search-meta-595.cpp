@@ -17,6 +17,7 @@ using Table = unsigned __int128;
 using Probes = std::array<std::uint64_t, 10>;
 constexpr int inputCount = 7;
 constexpr int budget = 10;
+constexpr int maxBudget = 11;
 constexpr std::size_t cacheLimit = 180'000;
 constexpr std::array<std::pair<int, int>, 8> edges{{
     {0, 1}, {0, 2}, {2, 1}, {0, 3}, {3, 4}, {4, 5}, {5, 6}, {6, 1},
@@ -35,7 +36,7 @@ struct Wire {
 };
 
 struct State {
-    std::array<Table, budget + 1> values{};
+    std::array<Table, maxBudget + 1> values{};
     int remaining;
     bool operator==(const State&) const = default;
 };
@@ -265,6 +266,10 @@ struct Search {
 
 int main(int argc, char** argv) {
     const bool freeInversion = argc > 1 && std::string_view(argv[1]) == "free";
+    const int limit = argc > 2 ? std::atoi(argv[2]) : budget;
+    if (limit < 1 || limit > maxBudget) {
+        return 2;
+    }
     const Problem problem;
     std::vector<Wire> inputs;
     std::vector<std::pair<int, int>> roots;
@@ -275,7 +280,7 @@ int main(int argc, char** argv) {
         }
     }
     std::cout << roots.size() << " first gate pairs, " << problem.probes.size()
-              << " probes, budget " << budget << std::endl;
+              << " probes, budget " << limit << std::endl;
     std::atomic<bool> found = false;
     std::atomic<std::size_t> next = 0;
     std::mutex outputMutex;
@@ -291,7 +296,7 @@ int main(int argc, char** argv) {
                     }
                     const auto [a, b] = roots[root];
                     const auto start = search.visits;
-                    if (!search.pair(inputs, budget, a, b)) {
+                    if (!search.pair(inputs, limit, a, b)) {
                         std::lock_guard guard(outputMutex);
                         std::cout << "EXHAUSTED " << a << ' ' << b << ' '
                                   << search.visits - start << " states" << std::endl;
