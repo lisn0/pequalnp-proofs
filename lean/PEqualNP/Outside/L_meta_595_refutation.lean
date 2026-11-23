@@ -656,7 +656,8 @@ theorem optimized_complete (n : ℕ) (ws : List W) (extra : ℕ) (hn : ws.Nodup)
         right
         rcases hm with direct | swap
         · exact ⟨(a,b,r), direct, goal, List.mem_toFinset.mp hz, rfl⟩
-        · exact ⟨(b,a,r), swap, goal, List.mem_toFinset.mp (ops_swap a b ▸ hz), rfl⟩
+        · have hswap : goal ∈ basicOps b a := by rwa [← ops_swap a b]
+          exact ⟨(b,a,r), swap, goal, List.mem_toFinset.mp hswap, rfl⟩
       have go {a b : W} (perm : ws.Perm (a::b::r))
           (hset : ws.toFinset = insert a (insert b needed)) (hop : z ∈ basicOps a b) :
           dispatch extra (optimized k) a b r = true := by
@@ -730,6 +731,56 @@ theorem dispatch_cases (extra : ℕ) (next : ℕ → List W → Bool) (a b : W) 
 def branchCheck (i j : ℕ) (branch : Fin 4) : Bool :=
   ((pairs inputs)[i]?).any fun (a,b,r) =>
     ((rawOps a b)[j]?).any fun w => gateBranch 4 (optimized 9) a b r w branch
+
+theorem search_of_branches
+    (checkedBranches : ∀ (i : Fin 21) (j k : Fin 4), branchCheck i.val j.val k = false) : optimized 10 4 inputs = false := by
+  apply Bool.eq_false_iff.mpr
+  intro h
+  simp only [optimized, show ¬ (9 : ℕ) = 0 by decide, if_false, Bool.or_eq_true, List.any_eq_true] at h
+  rcases h with hstop | ⟨⟨a,b,r⟩, hp, hstep⟩
+  · exact (by decide : (inputs == [goal]) ≠ true) hstop
+  · obtain ⟨w, hw, branch, hbranch⟩ := dispatch_cases 4 (optimized 9) a b r hstep
+    obtain ⟨i, hi⟩ := List.get_of_mem hp
+    obtain ⟨j, hj⟩ := List.get_of_mem hw
+    have hlen : (pairs inputs).length = 21 := by decide
+    have hraw : (rawOps a b).length = 4 := by simp [rawOps]
+    have hn := checkedBranches (Fin.cast hlen i) (Fin.cast hraw j) branch
+    simp only [branchCheck, Fin.val_cast, List.getElem?_eq_getElem i.isLt, Option.any_some] at hn
+    rw [hi] at hn
+    simp only [List.getElem?_eq_getElem j.isLt, Option.any_some] at hn
+    rw [hj] at hn
+    exact Bool.noConfusion (hn.symm.trans hbranch)
+
+set_option maxRecDepth 8000 in
+set_option maxHeartbeats 4000000 in
+theorem graphSpec (x : Fin 7 → Bool) : graph x = true ↔
+    ∃ u v : Fin 7,
+      (u.val, v.val) ∈ ([(0, 1), (0, 2), (2, 1), (0, 3), (3, 4), (4, 5), (5, 6), (6, 1)] : List (ℕ × ℕ)) ∧
+      x u = true ∧ x v = true := by
+  have check : ∀ x : Fin 7 → Bool, graph x = true ↔
+      ∃ u v : Fin 7,
+        (u.val, v.val) ∈ ([(0, 1), (0, 2), (2, 1), (0, 3), (3, 4), (4, 5), (5, 6), (6, 1)] : List (ℕ × ℕ)) ∧
+        x u = true ∧ x v = true := by decide +kernel
+  exact check x
+
+end Check595
+
+theorem PEqualNP.Outside.L_meta_595_of_branch_checks
+    (hbranches : ∀ (i : Fin 21) (j k : Fin 4), Check595.branchCheck i.val j.val k = false) :
+    ¬ (∃ C : PEqualNP.CircuitLowerBounds.Circuit,
+      PEqualNP.MetaComplexity.FanInTwo C ∧ C.size ≤ 10 ∧
+      (∀ x : Fin 7 → Bool, (C.eval (List.ofFn x) = true ↔
+        ∃ u v : Fin 7, (u.val, v.val) ∈
+          ([(0, 1), (0, 2), (2, 1), (0, 3), (3, 4), (4, 5), (5, 6), (6, 1)] : List (ℕ × ℕ)) ∧
+          x u = true ∧ x v = true))) := by
+  intro ⟨C, hOk, hSize, he⟩
+  have hEval : ∀ x, C.eval (List.ofFn x) = Check595.graph x := by
+    intro x
+    exact Bool.eq_iff_iff.mpr ((he x).trans (Check595.graphSpec x).symm)
+  have lower := Check595.lower_of_optimized (Check595.search_of_branches hbranches) 10 ⟨C, hOk, hSize, hEval⟩
+  omega
+
+namespace Check595
 
 set_option maxRecDepth 16000 in
 set_option maxHeartbeats 12000000 in
@@ -2498,48 +2549,7 @@ private theorem checkedBranches (i : Fin 21) (j k : Fin 4) : branchCheck i.val j
   · exact checkedPair19 j k
   · exact checkedPair20 j k
 
-theorem verifiedSearch : optimized 10 4 inputs = false := by
-  apply Bool.eq_false_iff.mpr
-  intro h
-  simp only [optimized, show ¬ (9 : ℕ) = 0 by decide, if_false, Bool.or_eq_true, List.any_eq_true] at h
-  rcases h with hstop | ⟨⟨a,b,r⟩, hp, hstep⟩
-  · exact (by decide : (inputs == [goal]) ≠ true) hstop
-  · obtain ⟨w, hw, branch, hbranch⟩ := dispatch_cases 4 (optimized 9) a b r hstep
-    obtain ⟨i, hi⟩ := List.get_of_mem hp
-    obtain ⟨j, hj⟩ := List.get_of_mem hw
-    have hlen : (pairs inputs).length = 21 := by decide
-    have hraw : (rawOps a b).length = 4 := by simp [rawOps]
-    have hn := checkedBranches (Fin.cast hlen i) (Fin.cast hraw j) branch
-    simp only [branchCheck, Fin.val_cast, List.getElem?_eq_getElem i.isLt, Option.any_some] at hn
-    rw [hi] at hn
-    simp only [List.getElem?_eq_getElem j.isLt, Option.any_some] at hn
-    rw [hj] at hn
-    exact Bool.noConfusion (hn.symm.trans hbranch)
-
-set_option maxRecDepth 8000 in
-set_option maxHeartbeats 4000000 in
-theorem graphSpec (x : Fin 7 → Bool) : graph x = true ↔
-    ∃ u v : Fin 7,
-      (u.val, v.val) ∈ ([(0, 1), (0, 2), (2, 1), (0, 3), (3, 4), (4, 5), (5, 6), (6, 1)] : List (ℕ × ℕ)) ∧
-      x u = true ∧ x v = true := by
-  have check : ∀ x : Fin 7 → Bool, graph x = true ↔
-      ∃ u v : Fin 7,
-        (u.val, v.val) ∈ ([(0, 1), (0, 2), (2, 1), (0, 3), (3, 4), (4, 5), (5, 6), (6, 1)] : List (ℕ × ℕ)) ∧
-        x u = true ∧ x v = true := by decide +kernel
-  exact check x
-
 end Check595
 
-theorem PEqualNP.Outside.L_meta_595_refutation :
-    ¬ (∃ C : PEqualNP.CircuitLowerBounds.Circuit,
-      PEqualNP.MetaComplexity.FanInTwo C ∧ C.size ≤ 10 ∧
-      (∀ x : Fin 7 → Bool, (C.eval (List.ofFn x) = true ↔
-        ∃ u v : Fin 7, (u.val, v.val) ∈
-          ([(0, 1), (0, 2), (2, 1), (0, 3), (3, 4), (4, 5), (5, 6), (6, 1)] : List (ℕ × ℕ)) ∧
-          x u = true ∧ x v = true))) := by
-  intro ⟨C, hOk, hSize, he⟩
-  have hEval : ∀ x, C.eval (List.ofFn x) = Check595.graph x := by
-    intro x
-    exact Bool.eq_iff_iff.mpr ((he x).trans (Check595.graphSpec x).symm)
-  have lower := Check595.lower_of_optimized Check595.verifiedSearch 10 ⟨C, hOk, hSize, hEval⟩
-  omega
+theorem PEqualNP.Outside.L_meta_595_refutation :=
+  PEqualNP.Outside.L_meta_595_of_branch_checks Check595.checkedBranches
