@@ -723,9 +723,9 @@ theorem dispatch_cases (extra : ℕ) (next : ℕ → List W → Bool) (a b : W) 
     rcases hok with (h0 | ⟨hmore, h1 | h2⟩) | h3
     · exact ⟨0, by simpa [gateBranch, hdup, Bool.and_eq_true] using h0⟩
     · refine ⟨1, ?_⟩
-      simpa [gateBranch, hdup] using Bool.and_eq_true.mpr ⟨hmore, Bool.and_eq_true.mpr h1⟩
+      simpa [gateBranch, hdup] using Bool.and_eq_true_iff.mpr ⟨hmore, Bool.and_eq_true_iff.mpr h1⟩
     · refine ⟨2, ?_⟩
-      simpa [gateBranch, hdup] using Bool.and_eq_true.mpr ⟨hmore, Bool.and_eq_true.mpr h2⟩
+      simpa [gateBranch, hdup] using Bool.and_eq_true_iff.mpr ⟨hmore, Bool.and_eq_true_iff.mpr h2⟩
     · exact ⟨3, by simpa [gateBranch, hdup, Bool.and_eq_true] using h3⟩
 
 def branchCheck (i j : ℕ) (branch : Fin 4) : Bool :=
