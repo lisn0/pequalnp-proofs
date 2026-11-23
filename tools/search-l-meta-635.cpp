@@ -46,7 +46,7 @@ void printFormula(const Formula& cnf) {
     }
 }
 
-Formula patternFormula(const std::set<int>& maximalSets) {
+Formula patternFormula(const std::set<int>& maximalSets, bool withWiring) {
     Formula cnf;
     int bare[gates][2][vertices];
     for (int i = 0; i < gates; ++i) {
@@ -57,6 +57,18 @@ Formula patternFormula(const std::set<int>& maximalSets) {
         }
     }
 
+    int wire[gates][2][gates];
+    std::vector<int> alwaysFalse[gates];
+    if (withWiring) {
+        for (int i = 0; i < gates; ++i) {
+            for (int side = 0; side < 2; ++side) {
+                for (int j = 0; j < i; ++j) {
+                    wire[i][side][j] = cnf.fresh();
+                }
+            }
+        }
+    }
+
     using Patterns = std::array<std::array<int, 2>, gates>;
     std::vector<Patterns> previous;
     for (int mask : maximalSets) {
@@ -64,6 +76,31 @@ Formula patternFormula(const std::set<int>& maximalSets) {
         for (int i = 0; i < gates; ++i) {
             row[i] = {cnf.fresh(), cnf.fresh()};
             cnf.clauses.push_back({-row[i][0], -row[i][1]});
+        }
+        if (withWiring) {
+            int value[gates];
+            for (int i = 0; i < gates; ++i) {
+                int truth[2];
+                for (int side = 0; side < 2; ++side) {
+                    std::vector<int> terms;
+                    for (int v = 0; v < vertices; ++v) {
+                        if (contains(mask, v)) {
+                            terms.push_back(bare[i][side][v]);
+                        }
+                    }
+                    for (int j = 0; j < i; ++j) {
+                        terms.push_back(cnf.both(wire[i][side][j], value[j]));
+                    }
+                    truth[side] = cnf.either(std::move(terms));
+                }
+                value[i] = cnf.both(truth[0], truth[1]);
+                alwaysFalse[i].push_back(-value[i]);
+                for (int side = 0; side < 2; ++side) {
+                    int actualPattern = cnf.both(-truth[side], truth[1 - side]);
+                    cnf.clauses.push_back({-row[i][side], actualPattern});
+                    cnf.clauses.push_back({row[i][side], -actualPattern});
+                }
+            }
         }
 
         // A marked side is false and the opposite side is true on this input.
@@ -91,6 +128,17 @@ Formula patternFormula(const std::set<int>& maximalSets) {
             cnf.clauses.push_back(std::move(opposites));
         }
         previous.push_back(row);
+    }
+    if (withWiring) {
+        std::vector<int> outputChoices;
+        for (int i = 0; i < gates; ++i) {
+            int chosen = cnf.fresh();
+            outputChoices.push_back(chosen);
+            for (int requirement : alwaysFalse[i]) {
+                cnf.clauses.push_back({-chosen, requirement});
+            }
+        }
+        cnf.clauses.push_back(std::move(outputChoices));
     }
     return cnf;
 }
@@ -132,9 +180,10 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (argc == 2 && std::string_view(argv[1]) == "--patterns") {
+    const std::string_view mode = argc == 2 ? argv[1] : "";
+    if (mode == "--patterns" || mode == "--pattern-wires") {
         std::cerr << negatives.size() << " maximal independent sets\n";
-        printFormula(patternFormula(negatives));
+        printFormula(patternFormula(negatives, mode == "--pattern-wires"));
         return 0;
     }
 
@@ -154,7 +203,7 @@ int main(int argc, char** argv) {
         output[i] = cnf.fresh();
     }
 
-    const bool normalized = argc == 2 && std::string_view(argv[1]) == "--normalized";
+    const bool normalized = mode == "--normalized";
     if (normalized) {
         for (int v = 0; v < vertices; ++v) {
             std::vector<int> occurrences;
