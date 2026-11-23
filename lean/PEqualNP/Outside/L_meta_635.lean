@@ -5,9 +5,15 @@ namespace PEqualNP.Outside.L_meta_635
 
 open PEqualNP.AndCount
 
-private def edges : Finset (Sym2 (Fin 10)) :=
-  {s(0, 1), s(1, 2), s(2, 3), s(3, 4), s(4, 0), s(0, 5), s(1, 6), s(2, 7), s(3, 8),
-    s(4, 9), s(5, 7), s(6, 8), s(7, 9), s(8, 5), s(9, 6)}
+private def adjacent (a b : Fin 10) : Prop :=
+  (a = 0 ∧ b = 1 ∨ a = 1 ∧ b = 0) ∨ (a = 1 ∧ b = 2 ∨ a = 2 ∧ b = 1) ∨
+  (a = 2 ∧ b = 3 ∨ a = 3 ∧ b = 2) ∨ (a = 3 ∧ b = 4 ∨ a = 4 ∧ b = 3) ∨
+  (a = 4 ∧ b = 0 ∨ a = 0 ∧ b = 4) ∨ (a = 0 ∧ b = 5 ∨ a = 5 ∧ b = 0) ∨
+  (a = 1 ∧ b = 6 ∨ a = 6 ∧ b = 1) ∨ (a = 2 ∧ b = 7 ∨ a = 7 ∧ b = 2) ∨
+  (a = 3 ∧ b = 8 ∨ a = 8 ∧ b = 3) ∨ (a = 4 ∧ b = 9 ∨ a = 9 ∧ b = 4) ∨
+  (a = 5 ∧ b = 7 ∨ a = 7 ∧ b = 5) ∨ (a = 6 ∧ b = 8 ∨ a = 8 ∧ b = 6) ∨
+  (a = 7 ∧ b = 9 ∨ a = 9 ∧ b = 7) ∨ (a = 8 ∧ b = 5 ∨ a = 5 ∧ b = 8) ∨
+  (a = 9 ∧ b = 6 ∨ a = 6 ∧ b = 9)
 
 private def witness : AndCountCircuit 10 where
   size := 6
@@ -38,15 +44,14 @@ private theorem witness_eval (I : Finset (Fin 10)) :
   have hg : witness.outGates = Finset.univ := rfl
   simp [hv, hg]
 
-private theorem covered : ∀ a b : Fin 10, s(a, b) ∈ edges ↔
+private theorem covered (a b : Fin 10) : adjacent a b ↔
     ∃ i : Fin witness.size,
       (a ∈ witness.leftVars i ∧ b ∈ witness.rightVars i) ∨
-      (b ∈ witness.leftVars i ∧ a ∈ witness.rightVars i) := by decide +kernel
+      (b ∈ witness.leftVars i ∧ a ∈ witness.rightVars i) := by
+  fin_cases a <;> fin_cases b <;> unfold adjacent <;> decide
 
 private theorem witness_computes (G : SimpleGraph (Fin 10))
-    (h : G.edgeSet = (edges : Set (Sym2 (Fin 10)))) : witness.Computes G := by
-  have adj (a b : Fin 10) : G.Adj a b ↔ s(a, b) ∈ edges := by
-    rw [← SimpleGraph.mem_edgeSet, h, Finset.mem_coe]
+    (adj : ∀ a b, G.Adj a b ↔ adjacent a b) : witness.Computes G := by
   intro I
   rw [witness_eval]
   constructor
@@ -64,9 +69,10 @@ private theorem upper (G : SimpleGraph (Fin 10))
     ∃ C : AndCountCircuit 10, C.WellFormed ∧
       (∀ I : Finset (Fin 10), (∀ v ∈ I, ∀ w ∈ I, ¬ G.Adj v w) → (∀ u, u ∉ I → ∃ v ∈ I, G.Adj u v) →
         C.eval I = false ∧ ∀ u, u ∉ I → C.eval (insert u I) = true) ∧ C.size = 6 := by
-  have hEdges : G.edgeSet = (edges : Set (Sym2 (Fin 10))) := by
-    simpa only [edges, Finset.coe_insert, Finset.coe_singleton] using h
-  have computes := witness_computes G hEdges
+  have adj (a b : Fin 10) : G.Adj a b ↔ adjacent a b := by
+    rw [← SimpleGraph.mem_edgeSet, h]
+    simp only [adjacent, Set.mem_insert_iff, Set.mem_singleton_iff, Sym2.eq_iff]
+  have computes := witness_computes G adj
   refine ⟨witness, witness_wellFormed, ?_, rfl⟩
   intro I independent dominates
   constructor
