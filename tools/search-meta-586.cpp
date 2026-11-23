@@ -64,6 +64,34 @@ struct Network {
         output = formula.variablesFor(inputCount + orCount);
     }
 
+    void removeSymmetries() {
+        for (const auto& [left, right] : operands) {
+            int samePrefix = formula.variable();
+            formula.clauses.push_back({samePrefix});
+            for (size_t i = 0; i < left.size(); ++i) {
+                const int a = left[i];
+                const int b = right[i];
+                formula.clauses.push_back({-samePrefix, -a, b});
+                if (i + 1 < left.size()) {
+                    const int nextPrefix = formula.variable();
+                    formula.clauses.push_back({-samePrefix, -a, -b, nextPrefix});
+                    formula.clauses.push_back({-samePrefix, a, b, nextPrefix});
+                    samePrefix = nextPrefix;
+                }
+            }
+        }
+        for (size_t i = 0; i < operands.size(); ++i) {
+            // Unused OR gates can be pruned before padding with OR aliases of input zero.
+            const size_t wire = inputCount + i;
+            Clause used{output[wire]};
+            for (size_t j = i + 1; j < operands.size(); ++j) {
+                used.push_back(operands[j][0][wire]);
+                used.push_back(operands[j][1][wire]);
+            }
+            formula.clauses.push_back(std::move(used));
+        }
+    }
+
     int conjunction(const Clause& selected, const Clause& previous, int mask) {
         Clause falseFactors;
         for (int i = 0; i < inputCount; ++i) {
@@ -235,14 +263,21 @@ void decode(const Network& network) {
 }
 
 int main(int argc, char** argv) {
-    if (argc != 3 || (std::string(argv[1]) != "encode" && std::string(argv[1]) != "decode")) {
-        std::cerr << "Usage: search-meta-586 encode|decode OR_COUNT\n";
+    if (argc != 3) {
+        std::cerr << "Usage: search-meta-586 encode|encode-ordered|decode OR_COUNT\n";
         return 2;
     }
+    const std::string mode = argv[1];
     Network network(std::stoi(argv[2]));
-    if (std::string(argv[1]) == "encode") {
+    if (mode == "encode") {
         emit(network);
-    } else {
+    } else if (mode == "encode-ordered") {
+        network.removeSymmetries();
+        emit(network);
+    } else if (mode == "decode") {
         decode(network);
+    } else {
+        std::cerr << "Unknown mode: " << mode << '\n';
+        return 2;
     }
 }
