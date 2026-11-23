@@ -3,6 +3,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 using Clause = std::vector<int>;
@@ -91,6 +92,30 @@ struct Network {
                 }
             }
         }
+        // Each output depends on all six inputs, requiring at least five binary gates.
+        for (const auto& output : outputs) {
+            for (size_t i = 0; i < std::min<size_t>(output.size(), 4); ++i) {
+                f.clauses.push_back({-output[i]});
+            }
+        }
+        // Simultaneously cycling both sides fixes every matching and their output ordering.
+        const auto rotate = [](int i) { return i / 3 * 3 + (i + 1) % 3; };
+        const auto& first = gates.front();
+        for (int a = 0; a < vertices; ++a) {
+            if (a > rotate(a) || a > rotate(rotate(a))) {
+                f.clauses.push_back({-first.op[Not], -first.left[a]});
+            }
+            for (int b = a + 1; b < vertices; ++b) {
+                const std::pair pair{a, b};
+                const std::pair rotated{std::min(rotate(a), rotate(b)), std::max(rotate(a), rotate(b))};
+                const int twiceA = rotate(rotate(a));
+                const int twiceB = rotate(rotate(b));
+                const std::pair twice{std::min(twiceA, twiceB), std::max(twiceA, twiceB)};
+                if (pair > rotated || pair > twice) {
+                    f.clauses.push_back({first.op[Not], -first.left[a], -first.right[b]});
+                }
+            }
+        }
     }
 
     int read(const Clause& choices, const Clause& prior, int mask) {
@@ -155,6 +180,23 @@ struct Network {
         }
     }
 };
+
+bool boundary(int mask) {
+    for (int output = 0; output < 3; ++output) {
+        const bool value = target(mask, output);
+        bool extremal = true;
+        for (int i = 0; i < vertices; ++i) {
+            if (bit(mask, i) == value && target(mask ^ (1 << i), output) == value) {
+                extremal = false;
+                break;
+            }
+        }
+        if (extremal) {
+            return true;
+        }
+    }
+    return false;
+}
 
 struct Gate {
     Op op;
@@ -239,7 +281,7 @@ void decode(const Network& network) {
 
 int main(int argc, char** argv) {
     if (argc != 3) {
-        std::cerr << "Usage: search-meta-652 encode|control|decode GATE_COUNT\n";
+        std::cerr << "Usage: search-meta-652 encode|monotone|control|decode GATE_COUNT\n";
         return 2;
     }
     const std::string mode = argv[1];
@@ -250,10 +292,17 @@ int main(int argc, char** argv) {
     Network network(count);
     if (mode == "decode") {
         decode(network);
-    } else if (mode == "encode" || mode == "control") {
+    } else if (mode == "encode" || mode == "monotone" || mode == "control") {
         network.symmetry();
+        if (mode == "monotone") {
+            for (const auto& gate : network.gates) {
+                network.f.clauses.push_back({-gate.op[Not]});
+            }
+        }
         for (int mask = 0; mask < assignments; ++mask) {
-            network.constrain(mask);
+            if (mode != "monotone" || boundary(mask)) {
+                network.constrain(mask);
+            }
         }
         if (mode == "control") {
             network.fixControl();
