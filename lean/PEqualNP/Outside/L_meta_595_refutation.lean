@@ -595,20 +595,24 @@ theorem sep_canon (x : W) : sep (canon x) = sep x := by
 def dispatch (extra : ℕ) (next : ℕ → List W → Bool) (a b : W) (r : List W) : Bool :=
   let base := cuts r
   (rawOps a b).any fun w =>
-    let v := sep w ||| base
-    ((v == -1) && next extra (canon w :: r)) ||
-    ((extra != 0) && (((v ||| sep a == -1) && next (extra-1) (canon w :: a :: r)) ||
-                       ((v ||| sep b == -1) && next (extra-1) (canon w :: b :: r)))) ||
-    ((extra ≥ 2) && (v ||| sep a ||| sep b == -1) && next (extra-2) (canon w :: a :: b :: r))
+    let z := canon w
+    if z ∈ a :: b :: r then false
+    else
+      let v := sep w ||| base
+      ((v == -1) && next extra (z :: r)) ||
+      ((extra != 0) && (((v ||| sep a == -1) && next (extra-1) (z :: a :: r)) ||
+                         ((v ||| sep b == -1) && next (extra-1) (z :: b :: r)))) ||
+      ((extra ≥ 2) && (v ||| sep a ||| sep b == -1) && next (extra-2) (z :: a :: b :: r))
 
 def optimized : ℕ → ℕ → List W → Bool
   | 0, _, ws => ws == [goal]
   | k+1, extra, ws => ws == [goal] ||
-    (pairs ws).any (fun (a,b,r) => dispatch extra (optimized k) a b r)
+    (pairs ws).any (fun (a,b,r) =>
+      if k = 0 then (ops a b).any (· == goal) else dispatch extra (optimized k) a b r)
 
 theorem dispatch_complete {k extra : ℕ} {a b z : W} {r kept : List W}
     (next : ℕ → List W → Bool)
-    (hz : z ∈ basicOps a b) (hk : kept ∈ keepChoices a b r)
+    (hz : z ∈ basicOps a b) (hfresh : z ∉ a :: b :: r) (hk : kept ∈ keepChoices a b r)
     (he : extra + r.length = k) (hn : kept.length ≤ k)
     (hc : cuts (z::kept) = -1) (ht : next (k-kept.length) (z::kept) = true) :
     dispatch extra next a b r = true := by
@@ -616,6 +620,7 @@ theorem dispatch_complete {k extra : ℕ} {a b z : W} {r kept : List W}
   obtain ⟨w,hw,rfl⟩ := List.mem_map.mp (hmap ▸ List.mem_toFinset.mp hz)
   apply List.any_eq_true.mpr
   refine ⟨w,hw,?_⟩
+  simp only [if_neg hfresh]
   simp [keepChoices] at hk
   rcases hk with rfl|rfl|rfl|rfl <;>
     simp only [cuts, List.foldr_cons, sep_canon] at hc ⊢ <;>
@@ -639,6 +644,19 @@ theorem optimized_complete (n : ℕ) (ws : List W) (extra : ℕ) (hn : ws.Nodup)
     rcases Live595.first_live h with done | ⟨a,ha,b,hb,hab,z,hz,hout,needed,hs,tail⟩
     · simp [optimized, singleton_list hn done]
     · obtain ⟨r, hm, hp⟩ := pick_two (List.mem_toFinset.mp ha) (List.mem_toFinset.mp hb) hab
+      by_cases hk0 : k = 0
+      · have hzgoal : z = goal := by
+          subst k
+          have hsingle : insert z needed = {goal} := tail
+          have hmem : z ∈ insert z needed := Finset.mem_insert_self _ _
+          rw [hsingle] at hmem
+          exact Finset.mem_singleton.mp hmem
+        subst z
+        simp only [optimized, hk0, if_pos, Bool.or_eq_true, List.any_eq_true, beq_iff_eq]
+        right
+        rcases hm with direct | swap
+        · exact ⟨(a,b,r), direct, goal, List.mem_toFinset.mp hz, rfl⟩
+        · exact ⟨(b,a,r), swap, goal, List.mem_toFinset.mp (ops_swap a b ▸ hz), rfl⟩
       have go {a b : W} (perm : ws.Perm (a::b::r))
           (hset : ws.toFinset = insert a (insert b needed)) (hop : z ∈ basicOps a b) :
           dispatch extra (optimized k) a b r = true := by
@@ -655,10 +673,14 @@ theorem optimized_complete (n : ℕ) (ws : List W) (extra : ℕ) (hn : ws.Nodup)
         rw [List.toFinset_card_of_nodup hnd, List.length_cons] at hc
         have len := perm.length_eq
         simp only [List.length_cons] at len
-        apply dispatch_complete (k := k) (extra := extra) (optimized k) hop hk (by omega) (by omega) (cuts_full hl)
+        have hfresh : z ∉ a :: b :: r := by
+          intro hz'
+          exact hout (List.mem_toFinset.mpr (perm.mem_iff.mpr hz'))
+        apply dispatch_complete (k := k) (extra := extra) (optimized k) hop hfresh
+          hk (by omega) (by omega) (cuts_full hl)
         apply ih _ _ hnd _ hl
         simp; omega
-      simp only [optimized, Bool.or_eq_true, List.any_eq_true]
+      simp only [optimized, if_neg hk0, Bool.or_eq_true, List.any_eq_true]
       right
       rcases hm with direct | swap
       · exact ⟨(a,b,r), direct, go hp hs hz⟩
@@ -791,7 +813,7 @@ private theorem checkedRoots (i : Fin 21) : rootCheck i.val = false := by
 theorem verifiedSearch : optimized 10 4 inputs = false := by
   apply Bool.eq_false_iff.mpr
   intro h
-  simp only [optimized, Bool.or_eq_true, List.any_eq_true] at h
+  simp only [optimized, show ¬ (9 : ℕ) = 0 by decide, if_false, Bool.or_eq_true, List.any_eq_true] at h
   rcases h with hstop | ⟨p, hp, hstep⟩
   · exact (by decide : (inputs == [goal]) ≠ true) hstop
   · obtain ⟨i, hi⟩ := List.get_of_mem hp
