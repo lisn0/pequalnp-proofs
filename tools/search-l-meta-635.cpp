@@ -89,7 +89,8 @@ int main(int argc, char** argv) {
         output[i] = cnf.fresh();
     }
 
-    if (argc == 2 && std::string_view(argv[1]) == "--normalized") {
+    const bool normalized = argc == 2 && std::string_view(argv[1]) == "--normalized";
+    if (normalized) {
         for (int v = 0; v < vertices; ++v) {
             std::vector<int> occurrences;
             for (int i = 0; i < gates; ++i) {
@@ -108,11 +109,11 @@ int main(int argc, char** argv) {
         }
     }
 
-    auto circuit = [&](int mask) {
+    using Sides = std::array<std::array<int, 2>, gates>;
+    auto circuit = [&](int mask, Sides& sides) {
         int value[gates];
         std::vector<int> outputTerms;
         for (int i = 0; i < gates; ++i) {
-            int sides[2];
             for (int side = 0; side < 2; ++side) {
                 std::vector<int> terms;
                 for (int v = 0; v < vertices; ++v) {
@@ -123,19 +124,51 @@ int main(int argc, char** argv) {
                 for (int j = 0; j < i; ++j) {
                     terms.push_back(cnf.both(wire[i][side][j], value[j]));
                 }
-                sides[side] = cnf.either(std::move(terms));
+                sides[i][side] = cnf.either(std::move(terms));
             }
-            value[i] = cnf.both(sides[0], sides[1]);
+            value[i] = cnf.both(sides[i][0], sides[i][1]);
             outputTerms.push_back(cnf.both(output[i], value[i]));
         }
         return cnf.either(std::move(outputTerms));
     };
 
+    std::vector<Sides> negativeSides;
     for (int mask : negatives) {
-        cnf.clauses.push_back({-circuit(mask)});
+        Sides sides;
+        cnf.clauses.push_back({-circuit(mask, sides)});
+        if (normalized) {
+            // The first gate to turn true after adding v receives v on its false side.
+            for (int v = 0; v < vertices; ++v) {
+                if (contains(mask, v)) {
+                    continue;
+                }
+                std::vector<int> triggers;
+                for (int i = 0; i < gates; ++i) {
+                    for (int side = 0; side < 2; ++side) {
+                        int activated = cnf.both(bare[i][side][v], -sides[i][side]);
+                        triggers.push_back(cnf.both(activated, sides[i][1 - side]));
+                    }
+                }
+                cnf.clauses.push_back(std::move(triggers));
+            }
+            // The first new gate on a union must have opposite true sides on the two sets.
+            for (const Sides& other : negativeSides) {
+                std::vector<int> opposites;
+                for (int i = 0; i < gates; ++i) {
+                    for (int side = 0; side < 2; ++side) {
+                        int here = cnf.both(sides[i][side], -sides[i][1 - side]);
+                        int there = cnf.both(other[i][1 - side], -other[i][side]);
+                        opposites.push_back(cnf.both(here, there));
+                    }
+                }
+                cnf.clauses.push_back(std::move(opposites));
+            }
+            negativeSides.push_back(sides);
+        }
     }
     for (int mask : positives) {
-        cnf.clauses.push_back({circuit(mask)});
+        Sides sides;
+        cnf.clauses.push_back({circuit(mask, sides)});
     }
 
     std::cerr << negatives.size() << " negative and " << positives.size() << " positive inputs\n";
