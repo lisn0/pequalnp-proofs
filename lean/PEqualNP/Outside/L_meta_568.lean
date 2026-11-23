@@ -584,7 +584,7 @@ private theorem cleanReads (n : ℕ) (C : Circuit) (hmin : IsMinimalCircuit (n +
   let final := elim m post after
   have hsplit : gs = pre ++ g :: post := normed_split C j
   have hpreLen : pre.length = j.val := by
-    simp [pre, gs, Nat.min_eq_left (Nat.le_of_lt j.isLt)]
+    simp [pre, gs]
   have hlen : gs.length = pre.length + 1 + post.length := by
     have hh := congrArg List.length hsplit
     simp only [List.length_append, List.length_cons] at hh
@@ -594,7 +594,7 @@ private theorem cleanReads (n : ℕ) (C : Circuit) (hmin : IsMinimalCircuit (n +
   have hg : NOk g := hok g (by rw [hsplit]; simp)
   have hbefore : before.1.length = m + j.val := by
     rw [elim_stat_length]
-    simp [start, identityStats, hpreLen]
+    simp [start, identityStats, hpreLen, m]
   have hfix : before.1.getD a (Sum.inl false) = Sum.inl false :=
     List.getD_eq_default _ _ (by rw [hbefore]; exact Nat.le_of_not_gt ha)
   have hsave : after.2.length = before.2.length :=
@@ -610,8 +610,8 @@ private theorem cleanReads (n : ℕ) (C : Circuit) (hmin : IsMinimalCircuit (n +
       (final.1.getD C.output (Sum.inl false)).val (wiresFrom final.2 (List.ofFn x)) =
         circuitFun m C x := by
     have hstart : Inv m (List.ofFn x) (List.ofFn x) start := by
-      simpa [start, wiresFrom] using inv_identity m (List.ofFn x) (by simp) []
-    have he := ((inv_elim m (List.ofFn x) (by simp) gs _ start
+      simpa [start, wiresFrom] using inv_identity m (List.ofFn x) (by simp [m]) []
+    have he := ((inv_elim m (List.ofFn x) (by simp [m]) gs _ start
       (fun k hk => (hok k hk).1) hstart).2 C.output).2
     rw [hfinal, wiresFrom_norm C.gates] at he
     exact he
@@ -635,7 +635,7 @@ private theorem liveGate (n : ℕ) (C : Circuit) (hmin : IsMinimalCircuit (n + 1
   let final := elim m post start
   have hsplit : gs = pre ++ g :: post := normed_split C j
   have hpreLen : pre.length = j.val := by
-    simp [pre, gs, Nat.min_eq_left (Nat.le_of_lt j.isLt)]
+    simp [pre, gs]
   have hlen : C.gates.length = pre.length + 1 + post.length := by
     have hh := congrArg List.length hsplit
     simp only [gs, List.length_map, List.length_append, List.length_cons] at hh
@@ -663,7 +663,7 @@ private theorem liveGate (n : ℕ) (C : Circuit) (hmin : IsMinimalCircuit (n + 1
         circuitFun m C x := by
     let w := wiresFrom pre (List.ofFn x)
     let b := g.op.eval (g.inputs.map fun i => w.getD i false)
-    have hw : w.length = m + j.val := by simp [w, length_wiresFrom, hpreLen]
+    have hw : w.length = m + j.val := by simp [w, length_wiresFrom, hpreLen, m]
     have hne' : C.output ≠ m + j.val := Ne.symm hne
     have hagree := wires_agree post (fun i => i = m + j.val) (w ++ [false]) (w ++ [b])
       (by simp) (by
@@ -671,10 +671,12 @@ private theorem liveGate (n : ℕ) (C : Circuit) (hmin : IsMinimalCircuit (n + 1
         rw [getD_snoc_ne _ _ _ _ (by rwa [hw]), getD_snoc_ne _ _ _ _ (by rwa [hw])])
       hpostNo C.output hne'
     have hstart : Inv m (List.ofFn x) (w ++ [false]) start :=
-      inv_skip m (List.ofFn x) (by simp) pre
-    have he := ((inv_elim m (List.ofFn x) (by simp) post _ start hpostOk hstart).2 C.output).2
+      inv_skip m (List.ofFn x) (by simp [m]) pre
+    have he := ((inv_elim m (List.ofFn x) (by simp [m]) post _ start hpostOk hstart).2 C.output).2
     change _ = (wiresFrom C.gates (List.ofFn x)).getD C.output false
-    rw [← wiresFrom_norm C.gates, hsplit, wiresFrom_append]
+    rw [← wiresFrom_norm C.gates]
+    change _ = (wiresFrom gs (List.ofFn x)).getD C.output false
+    rw [hsplit, wiresFrom_append]
     exact he.trans hagree
   have hlo := minimal_of_status m C hmin hnc final (elim_ok m post start hpreOk) hfinalEval
   have hfinalLen : final.2.length ≤ pre.length + post.length := elim_len m post start
@@ -724,21 +726,27 @@ private theorem cutStats_getD (a i : ℕ) (hi : i < a + 1) :
 private theorem cut_inv (n a : ℕ) (pre : List Gate) (x : Fin (n + 1) → Bool)
     (hlen : n + 1 + pre.length = a + 1) :
     Inv (n + 1) (List.ofFn x) ((wiresFrom pre (List.ofFn x)).set a false) (cutStats a, pre) := by
-  have hw : (wiresFrom pre (List.ofFn x)).length = a + 1 := by
-    simpa [length_wiresFrom] using hlen
-  refine ⟨by simp [cutStats, hw], ?_⟩
+  let w := wiresFrom pre (List.ofFn x)
+  have hw : w.length = a + 1 := by
+    simpa only [w, length_wiresFrom, List.length_ofFn] using hlen
+  refine ⟨?_, ?_⟩
+  · change (cutStats a).length = (w.set a false).length
+    rw [List.length_set, hw]
+    simp [cutStats]
   intro i
+  change ((cutStats a).getD i (Sum.inl false)).Valid (n + 1 + pre.length) ∧
+    ((cutStats a).getD i (Sum.inl false)).val w = (w.set a false).getD i false
   by_cases hi : i < a + 1
-  · change ((cutStats a).getD i (Sum.inl false)).Valid (n + 1 + pre.length) ∧ _
-    rw [cutStats_getD a i hi]
+  · rw [cutStats_getD a i hi]
     by_cases he : i = a
     · subst i
-      simp [Stat.Valid, Stat.val, List.getD_eq_getElem?_getD, hw]
-    · simp [he, Stat.Valid, Stat.val, List.getD_eq_getElem?_getD, hlen, hi]
-  · change ((cutStats a).getD i (Sum.inl false)).Valid (n + 1 + pre.length) ∧ _
-    rw [List.getD_eq_default _ _ (by simpa [cutStats] using Nat.le_of_not_gt hi)]
-    have hout : ((wiresFrom pre (List.ofFn x)).set a false).length ≤ i := by
-      simpa [hw] using Nat.le_of_not_gt hi
+      have ha : a < w.length := by omega
+      simp [Stat.Valid, Stat.val, List.getD_eq_getElem?_getD, ha]
+    · simp [he, Ne.symm he, Stat.Valid, Stat.val, List.getD_eq_getElem?_getD, hlen, hi]
+  · rw [List.getD_eq_default _ _ (by simpa [cutStats] using Nat.le_of_not_gt hi)]
+    have hout : (w.set a false).length ≤ i := by
+      rw [List.length_set, hw]
+      exact Nat.le_of_not_gt hi
     rw [List.getD_eq_default _ _ hout]
     exact ⟨trivial, rfl⟩
 
@@ -846,7 +854,7 @@ private theorem cutStep (n : ℕ) (C : Circuit) (hmin : IsMinimalCircuit (n + 1)
   have hstartLen : start.1.length = a + 1 := by simp [start, cutStats]
   have hstartFix : start.1.getD a (Sum.inl false) = Sum.inl false := by
     change (cutStats a).getD a (Sum.inl false) = _
-    simp [cutStats_getD a a (by omega)]
+    rw [cutStats_getD a a (by omega), if_pos rfl]
   have hm : before.1.length = m := by
     change (elim N mid start).1.length = m
     rw [elim_stat_length, hstartLen, hmidlen]
@@ -894,7 +902,9 @@ private theorem cutStep (n : ℕ) (C : Circuit) (hmin : IsMinimalCircuit (n + 1)
     | inr out => exact ⟨out, rfl⟩
     | inl b =>
       have hconst (x : Fin (n + 1) → Bool) : cutVal n C a false x = b := by
-        simpa [h, Stat.val] using (hval x).symm
+        have hv := hval x
+        rw [h] at hv
+        exact hv.symm
       cases b with
       | false =>
         have hsm := hmin.2 (⟨pre, a⟩ : Circuit) (fun k hk => (hokPre k hk).1) (by
@@ -915,7 +925,12 @@ private theorem cutStep (n : ℕ) (C : Circuit) (hmin : IsMinimalCircuit (n + 1)
     change final.2 = pre ++ t at ht
     rw [ht, wiresFrom_append]
     obtain ⟨u, hu, _⟩ := wiresFrom_prefix t (wiresFrom pre (List.ofFn x))
-    rw [hu, List.getD_append _ _ _ _ (by simp [length_wiresFrom, haLen])]
+    have ha : a < (wiresFrom pre (List.ofFn x)).length := by
+      rw [length_wiresFrom, List.length_ofFn]
+      change a < N + pre.length
+      rw [haLen]
+      omega
+    rw [hu, List.getD_append _ _ _ _ ha]
   have hretainedSize : C.gates.length ≤ final.2.length + 1 := by
     let gor : Gate := ⟨GateOp.or, [a, out]⟩
     let D : Circuit := ⟨final.2 ++ [gor], N + final.2.length⟩
@@ -926,7 +941,7 @@ private theorem cutStep (n : ℕ) (C : Circuit) (hmin : IsMinimalCircuit (n + 1)
       · exact hfinalOk k hk
       · simp only [List.mem_singleton] at hk
         subst k
-        simp [Ok, gor]
+        simp [gor]
     have hEq : circuitFun (n + 1) D = circuitFun (n + 1) C := by
       funext x
       rw [horiginal x]
@@ -1307,12 +1322,15 @@ private theorem prefix_zero_off (n : ℕ) (C : Circuit) (x : Fin (n + 1) → Boo
     (i : ℕ) (hi : i ≠ n) :
     (prefixW n C 0 x).getD i false = (prefixW n C 0 (forceLast x)).getD i false := by
   change (List.ofFn x).getD i false = (List.ofFn (forceLast x)).getD i false
-  rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD]
   by_cases hib : i < n + 1
   · have hin : i < n := by omega
     have he : (⟨i, hib⟩ : Fin (n + 1)) = (⟨i, hin⟩ : Fin n).castSucc := rfl
-    simp [List.getElem?_ofFn, hib, he, forceLast]
-  · simp [List.getElem?_ofFn, hib]
+    rw [List.getD_eq_getElem _ _ (by simpa only [List.length_ofFn] using hib),
+        List.getD_eq_getElem _ _ (by simpa only [List.length_ofFn] using hib),
+        List.getElem_ofFn, List.getElem_ofFn, he]
+    simp [forceLast]
+  · rw [List.getD_eq_default _ _ (by simpa only [List.length_ofFn] using Nat.le_of_not_gt hib),
+        List.getD_eq_default _ _ (by simpa only [List.length_ofFn] using Nat.le_of_not_gt hib)]
 
 private theorem getD_set_same {α : Type} (xs : List α) (i : ℕ) (v d : α)
     (hi : i < xs.length) : (xs.set i v).getD i d = v := by
@@ -1334,6 +1352,7 @@ private def active (n : ℕ) (C : Circuit) (a : ℕ) : Prop :=
 private theorem active_input (n : ℕ) (C : Circuit) : active n C n := by
   refine ⟨le_rfl, by omega, ∅, by simp, by simp, ?_, ?_⟩
   · intro x
+    rw [Nat.sub_self]
     change (List.ofFn (forceLast x)).getD n false = true
     rw [ofFn_snoc]
     exact getD_snoc_len _ _ _ _ (by simp)
@@ -1359,7 +1378,7 @@ private theorem active_cut_true (n : ℕ) (C : Circuit) (a : ℕ)
     · subst i
       rw [getD_set_same _ _ _ _ haz]
       exact (haw x).symm
-    · rw [getD_set_other _ _ _ _ _ h.symm]
+    · rw [getD_set_other _ _ _ _ _ (Ne.symm h)]
       exact hag x i hi h
   have he := wires_agree ((C.gates.map normGate).drop p) (fun i => i ∈ S)
     (u.set a true) v (by simpa using hlu.trans hlv.symm) heq hSread C.output hSout
@@ -1399,7 +1418,7 @@ private theorem active_advance (n : ℕ) (C : Circuit) (a : ℕ) (j : Fin C.gate
         omega
       · exact hSread _ hg' _ hw hs
     · exact hi
-  refine ⟨by dsimp [b]; omega, by dsimp [b]; omega, insert a S, ?_, ?_, ?_, ?_⟩
+  refine ⟨by omega, by have h := j.isLt; omega, insert a S, ?_, ?_, ?_, ?_⟩
   · intro ho
     rcases Set.mem_insert_iff.mp ho with e | he
     · exact hout e.symm
@@ -1421,7 +1440,7 @@ private theorem active_advance (n : ℕ) (C : Circuit) (a : ℕ) (j : Fin C.gate
     intro x
     rw [prefix_cons]
     have hn : normGate (C.gates.get j) = C.gates.get j :=
-      normGate_of_ne_not _ (by simp [hop])
+      normGate_of_ne_not _ (by rw [hop]; decide)
     rw [hn]
     let v := prefixW n C j.val (forceLast x)
     have hv : v.length = b := prefix_length n C _ j.isLt.le _
@@ -1482,6 +1501,9 @@ private theorem output_dep (n : ℕ) (C : Circuit)
         hv hgs C.output he
       rw [prefix_suffix, prefix_suffix] at heq
       exact hx heq
+end PEqualNP.Outside.Meta568
+
+open PEqualNP.CircuitLowerBounds PEqualNP.MetaComplexity PEqualNP.Outside.Meta568 in
 set_option maxHeartbeats 1000000 in
 theorem PEqualNP.Outside.L_meta_568 : ∀ (n : ℕ) (C : PEqualNP.CircuitLowerBounds.Circuit) (H : (Fin n → Bool) → Bool), PEqualNP.MetaComplexity.IsMinimalCircuit (n + 1) C → (∃ y y' : Fin n → Bool, H y ≠ H y') → (∀ x : Fin (n + 1) → Bool, PEqualNP.MetaComplexity.circuitFun (n + 1) C x = (x (Fin.last n) || H (fun i : Fin n => x i.castSucc))) → ∃ (k : ℕ) (c : Fin (k + 1) → Fin C.gates.length), StrictMono c ∧ (c (Fin.last k)).val + 1 = C.gates.length ∧ C.output = n + 1 + (c (Fin.last k)).val ∧ (∀ i : Fin (k + 1), (C.gates.get (c i)).op = PEqualNP.CircuitLowerBounds.GateOp.or ∧ (C.gates.get (c i)).inputs.length = 2) ∧ n ∈ (C.gates.get (c 0)).inputs ∧ (∀ i : Fin k, n + 1 + (c i.castSucc).val ∈ (C.gates.get (c i.succ)).inputs) ∧ (∀ j : Fin C.gates.length, ((C.gates.get j).op = PEqualNP.CircuitLowerBounds.GateOp.not ∧ (C.gates.get j).inputs.head? = some n ∨ (C.gates.get j).op ≠ PEqualNP.CircuitLowerBounds.GateOp.not ∧ n ∈ (C.gates.get j).inputs) → j = c 0) ∧ (∀ (i : Fin k) (j : Fin C.gates.length), ((C.gates.get j).op = PEqualNP.CircuitLowerBounds.GateOp.not ∧ (C.gates.get j).inputs.head? = some (n + 1 + (c i.castSucc).val) ∨ (C.gates.get j).op ≠ PEqualNP.CircuitLowerBounds.GateOp.not ∧ (n + 1 + (c i.castSucc).val) ∈ (C.gates.get j).inputs) → j = c i.succ) ∧ (∀ j : Fin C.gates.length, Relation.TransGen (fun a b : ℕ => ∃ j : Fin C.gates.length, b = n + 1 + j.val ∧ ((C.gates.get j).op = PEqualNP.CircuitLowerBounds.GateOp.not ∧ (C.gates.get j).inputs.head? = some a ∨ (C.gates.get j).op ≠ PEqualNP.CircuitLowerBounds.GateOp.not ∧ a ∈ (C.gates.get j).inputs)) n (n + 1 + j.val) ↔ ∃ i : Fin (k + 1), c i = j) ∧ (∃ w ∈ (C.gates.get (c 0)).inputs, w ≠ n ∧ w < n + 1 + (c 0).val ∧ ¬ Relation.TransGen (fun a b : ℕ => ∃ j : Fin C.gates.length, b = n + 1 + j.val ∧ ((C.gates.get j).op = PEqualNP.CircuitLowerBounds.GateOp.not ∧ (C.gates.get j).inputs.head? = some a ∨ (C.gates.get j).op ≠ PEqualNP.CircuitLowerBounds.GateOp.not ∧ a ∈ (C.gates.get j).inputs)) n w) ∧ (∀ i : Fin k, ∃ w ∈ (C.gates.get (c i.succ)).inputs, w ≠ n + 1 + (c i.castSucc).val ∧ w ≠ n ∧ w < n + 1 + (c i.succ).val ∧ ¬ Relation.TransGen (fun a b : ℕ => ∃ j : Fin C.gates.length, b = n + 1 + j.val ∧ ((C.gates.get j).op = PEqualNP.CircuitLowerBounds.GateOp.not ∧ (C.gates.get j).inputs.head? = some a ∨ (C.gates.get j).op ≠ PEqualNP.CircuitLowerBounds.GateOp.not ∧ a ∈ (C.gates.get j).inputs)) n w) := by
   classical
@@ -1514,9 +1536,11 @@ theorem PEqualNP.Outside.L_meta_568 : ∀ (n : ℕ) (C : PEqualNP.CircuitLowerBo
       obtain ⟨t, ht, _⟩ := wiresFrom_prefix ((C.gates.map normGate).drop 0) (prefixW n C 0 x)
       rw [ht, List.getD_append _ _ _ _ (by rw [prefix_length _ _ _ (Nat.zero_le _)]; omega)]
       change (List.ofFn x).getD n false = x (Fin.last n)
-      simp [List.getD_eq_getElem?_getD, List.getElem?_ofFn]
+      rw [List.getD_eq_getElem _ _ (by simp only [List.length_ofFn]; omega), List.getElem_ofFn] <;> rfl
     apply hyz
-    simpa [hslice] using (hc (Fin.snoc y false)).trans (hc (Fin.snoc z false)).symm
+    have hy : H y = false := by simpa [hslice] using hc (Fin.snoc y false)
+    have hz : H z = false := by simpa [hslice] using hc (Fin.snoc z false)
+    exact hy.trans hz.symm
   have hinit := output_dep n C hdep
   have hout := outputLast n C hmin hnc (by omega)
   have hvalid := cleanReads n C hmin hnc
@@ -1543,5 +1567,3 @@ theorem PEqualNP.Outside.L_meta_568 : ∀ (n : ℕ) (C : PEqualNP.CircuitLowerBo
     a ha.1 ha.2.1 hne (active_cut_true n C a ha hF) j hj
   obtain ⟨⟨hop, hlen, hmem, hside⟩, hun⟩ := hcut
   exact ⟨j, hj, hun, hop, hlen, hside, active_advance n C a j ha (hvalid a j hj) hun hop hmem hne⟩
-
-end PEqualNP.Outside.Meta568
