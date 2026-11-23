@@ -15,10 +15,15 @@ private def adjacent (a b : Fin 10) : Prop :=
   (a = 7 ∧ b = 9 ∨ a = 9 ∧ b = 7) ∨ (a = 8 ∧ b = 5 ∨ a = 5 ∧ b = 8) ∨
   (a = 9 ∧ b = 6 ∨ a = 6 ∧ b = 9)
 
+private def center : Fin 6 → Fin 10 := ![1, 3, 4, 5, 6, 7]
+
+private def neighbors : Fin 6 → Finset (Fin 10) :=
+  ![{0, 2, 6}, {2, 4, 8}, {3, 0, 9}, {0, 7, 8}, {1, 8, 9}, {2, 5, 9}]
+
 private def witness : AndCountCircuit 10 where
   size := 6
-  leftVars i := {(![1, 3, 4, 5, 6, 7] : Fin 6 → Fin 10) i}
-  rightVars := ![{0, 2, 6}, {2, 4, 8}, {3, 0, 9}, {0, 7, 8}, {1, 8, 9}, {2, 5, 9}]
+  leftVars i := {center i}
+  rightVars := neighbors
   leftGates _ := ∅
   rightGates _ := ∅
   outVars := ∅
@@ -26,7 +31,7 @@ private def witness : AndCountCircuit 10 where
 
 private theorem witness_wellFormed : witness.WellFormed := by
   intro i
-  simp [witness]
+  constructor <;> intro j hj <;> exact (Finset.notMem_empty j hj).elim
 
 private theorem witness_gate (I : Finset (Fin 10)) (i : Fin witness.size) :
     witness.gateVal I i = true ↔
@@ -44,11 +49,20 @@ private theorem witness_eval (I : Finset (Fin 10)) :
   have hg : witness.outGates = Finset.univ := rfl
   simp [hv, hg]
 
+set_option synthInstance.maxSize 4096 in
+set_option synthInstance.maxHeartbeats 400000 in
+set_option maxRecDepth 10000 in
+private theorem coveredPairs : ∀ a b : Fin 10, adjacent a b ↔
+    ∃ i : Fin 6, (a = center i ∧ b ∈ neighbors i) ∨
+      (b = center i ∧ a ∈ neighbors i) := by
+  unfold adjacent
+  decide
+
 private theorem covered (a b : Fin 10) : adjacent a b ↔
     ∃ i : Fin witness.size,
       (a ∈ witness.leftVars i ∧ b ∈ witness.rightVars i) ∨
       (b ∈ witness.leftVars i ∧ a ∈ witness.rightVars i) := by
-  fin_cases a <;> fin_cases b <;> unfold adjacent <;> decide
+  simpa only [witness, Finset.mem_singleton] using coveredPairs a b
 
 private theorem witness_computes (G : SimpleGraph (Fin 10))
     (adj : ∀ a b, G.Adj a b ↔ adjacent a b) : witness.Computes G := by
